@@ -26,8 +26,7 @@ def get_price_history(symbol: str, days: int = 100) -> pd.DataFrame:
     return data
 
 
-def generate_signal(symbol: str) -> str:
-    """Returns 'BUY', 'SELL', or 'HOLD' based on the current SMA crossover state."""
+def _compute_smas(symbol: str) -> tuple[pd.Series, pd.Series]:
     data = get_price_history(symbol, days=config.LONG_WINDOW + 20)
     closes = data["Close"]
     if isinstance(closes, pd.DataFrame):
@@ -37,6 +36,18 @@ def generate_signal(symbol: str) -> str:
 
     short_sma = closes.rolling(window=config.SHORT_WINDOW).mean()
     long_sma = closes.rolling(window=config.LONG_WINDOW).mean()
+    return short_sma, long_sma
+
+
+def get_current_smas(symbol: str) -> tuple[float, float]:
+    """Returns the latest (short_sma, long_sma) values, for display purposes."""
+    short_sma, long_sma = _compute_smas(symbol)
+    return short_sma.iloc[-1], long_sma.iloc[-1]
+
+
+def generate_signal(symbol: str) -> str:
+    """Returns 'BUY', 'SELL', or 'HOLD' based on the current SMA crossover state."""
+    short_sma, long_sma = _compute_smas(symbol)
 
     if len(short_sma.dropna()) < 2 or len(long_sma.dropna()) < 2:
         return "HOLD"  # not enough data yet

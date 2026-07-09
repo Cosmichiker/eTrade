@@ -1,28 +1,18 @@
 """
-Ties everything together: checks the strategy signal, applies safety rails,
-and places (or dry-run logs) orders through the E*TRADE client.
+Ties everything together: checks the strategy signal for each ticker and
+prints a table of SMAs and BUY/SELL/HOLD signals. Does not place any orders.
 """
 import datetime
+from zoneinfo import ZoneInfo
 import config
-from etrade_client import ETradeClient
-from strategy import generate_signal
+from strategy import generate_signal, get_current_smas
 
-# Tracks how many orders we've placed today, to enforce the circuit breaker.
-_orders_today = 0
-_orders_today_date = None
-
-
-def _reset_daily_counter_if_needed():
-    global _orders_today, _orders_today_date
-    today = datetime.date.today()
-    if _orders_today_date != today:
-        _orders_today = 0
-        _orders_today_date = today
+_EASTERN = ZoneInfo("America/New_York")
 
 
 def _market_is_open() -> bool:
     """Rough regular-hours check (9:30-16:00 ET, weekdays). Not holiday-aware."""
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(_EASTERN)
     if now.weekday() >= 5:
         return False
     market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
@@ -30,25 +20,26 @@ def _market_is_open() -> bool:
     return market_open <= now <= market_close
 
 
-def run_once(client: ETradeClient):
-    """Checks the signal one time and acts on it if conditions allow."""
-    global _orders_today
-    _reset_daily_counter_if_needed()
+def _print_sma_table(rows: list):
+    """rows: list of (ticker, short_sma, long_sma, signal)."""
+    short_header = f"Short SMA ({config.SHORT_WINDOW}d)"
+    long_header = f"Long SMA ({config.LONG_WINDOW}d)"
+    header = f"{'Ticker':<8}{short_header:>20}{long_header:>20}{'Signal':>10}"
+    print(header)
+    print("-" * len(header))
+    for ticker, short_sma, long_sma, signal in rows:
+        print(f"{ticker:<8}{short_sma:>20.2f}{long_sma:>20.2f}{signal:>10}")
 
+
+def run_once(tickers: list):
+    """Checks the signal for each ticker and prints the results. Never places orders."""
     if not _market_is_open():
         print(f"[{datetime.datetime.now()}] Market closed. Skipping.")
         return
 
-    if _orders_today >= config.MAX_ORDERS_PER_DAY:
-        print(f"[{datetime.datetime.now()}] Daily order limit reached ({config.MAX_ORDERS_PER_DAY}). Skipping.")
-        return
-
-    signal = generate_signal(config.TICKER)
-    print(f"[{datetime.datetime.now()}] Signal for {config.TICKER}: {signal}")
-
-    if signal in ("BUY", "SELL"):
-        quantity = min(config.MAX_SHARES_PER_ORDER, config.MAX_SHARES_PER_ORDER)
-        client.place_order(config.TICKER, quantity, signal)
-        _orders_today += 1
-    else:
-        print("No action taken (HOLD).")
+    print(f"\n[{datetime.datetime.now()}] Checking {len(tickers)} ticker(s)...")
+    rows = [
+        (ticker, *get_current_smas(ticker), generate_signal(ticker))
+        for ticker in tickers
+    ]
+    _print_sma_table(rows)

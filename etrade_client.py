@@ -65,6 +65,59 @@ class ETradeClient:
         """Helper to find your ACCOUNT_ID_KEY the first time you run this."""
         return self.accounts.list_accounts(resp_format="json")
 
+    # securityType values this bot will fetch. "EQ" = equity, "MF" = mutual
+    # fund. NOTE: place_order() only calls E*TRADE's equity order endpoints
+    # (preview_equity_order/place_equity_order). Mutual funds actually need
+    # E*TRADE's separate Mutual Fund order API (different fields, cutoff
+    # times, minimums) which isn't implemented here -- if DRY_RUN is ever
+    # False, a live MF order routed through the equity endpoint is untested
+    # and may be rejected or behave unexpectedly. Included anyway per user
+    # request; flag this to the user again before turning DRY_RUN off.
+    SUPPORTED_SECURITY_TYPES = ("EQ", "MF")
+
+    def get_positions(self) -> list:
+        """
+        Returns the list of ticker symbols currently held in the account
+        (config.ACCOUNT_ID_KEY) whose securityType is in
+        SUPPORTED_SECURITY_TYPES, via E*TRADE's portfolio API. Other types
+        (options, bonds, etc.) are skipped and reported, since neither the
+        strategy nor place_order() supports them.
+        """
+        portfolio = self.accounts.get_account_portfolio(
+            account_id_key=config.ACCOUNT_ID_KEY, count=200, resp_format="json"
+        )
+        response = (portfolio or {}).get("PortfolioResponse") or {}
+
+        # E*TRADE's JSON collapses a single-item list to a lone dict, so
+        # normalize both AccountPortfolio and Position to lists.
+        account_portfolios = response.get("AccountPortfolio", [])
+        if isinstance(account_portfolios, dict):
+            account_portfolios = [account_portfolios]
+
+        symbols = []
+        skipped = []
+        for account_portfolio in account_portfolios:
+            positions = account_portfolio.get("Position", [])
+            if isinstance(positions, dict):
+                positions = [positions]
+
+            for position in positions:
+                product = position.get("Product") or {}
+                symbol = product.get("symbol")
+                security_type = product.get("securityType")
+                if not symbol:
+                    continue
+                if security_type not in (None,) + self.SUPPORTED_SECURITY_TYPES:
+                    skipped.append(f"{symbol} ({security_type})")
+                    continue
+                if symbol not in symbols:
+                    symbols.append(symbol)
+
+        if skipped:
+            print(f"Skipped unsupported positions (not tradeable by this bot): {', '.join(skipped)}")
+
+        return symbols
+
     def get_daily_closes(self, symbol: str, days: int = 60):
         """Fetch recent daily closing prices for a symbol."""
         quote = self.market.get_quote([symbol], resp_format="json")

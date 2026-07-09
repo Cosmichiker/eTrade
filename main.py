@@ -18,7 +18,6 @@ CHECK_INTERVAL_MINUTES = 5
 def main():
     print("=" * 60)
     print(f"E*TRADE bot starting | env={config.ENV} | DRY_RUN={config.DRY_RUN}")
-    print(f"Ticker: {config.TICKER} | SMA {config.SHORT_WINDOW}/{config.LONG_WINDOW}")
     print("=" * 60)
 
     if config.DRY_RUN:
@@ -40,8 +39,14 @@ def main():
             "Run with the list_accounts() lines uncommented above to find it."
         )
 
-    run_once(client)  # check immediately on startup
-    schedule.every(CHECK_INTERVAL_MINUTES).minutes.do(run_once, client)
+    # Tickers are your current E*TRADE holdings, fetched once at startup.
+    # Positions opened later in the day (by this bot or manually) aren't
+    # picked up until the bot is restarted.
+    tickers = client.get_positions() or config.DEFAULT_TICKERS
+    print(f"Tickers: {', '.join(tickers)} | SMA {config.SHORT_WINDOW}/{config.LONG_WINDOW}")
+
+    run_once(tickers)  # check immediately on startup
+    schedule.every(CHECK_INTERVAL_MINUTES).minutes.do(run_once, tickers)
 
     print(f"\nWill re-check every {CHECK_INTERVAL_MINUTES} minutes. Press Ctrl+C to stop.\n")
     while True:

@@ -23,8 +23,14 @@ DRY_RUN = True          # If True, orders are logged but NEVER actually sent.
                          # output and are confident in the logic.
 
 MAX_SHARES_PER_ORDER = 10     # Hard cap on order size, regardless of strategy output.
-MAX_ORDERS_PER_DAY = 3        # Circuit breaker on total orders per day.
-TICKER = "AAPL"                # Symbol this example strategy trades.
+MAX_ORDERS_PER_DAY = 3        # Circuit breaker on total orders per day, shared across
+                               # ALL tickers combined (not per-ticker) -- see trader.py.
+
+# Tickers to trade are fetched dynamically at startup from your E*TRADE
+# account holdings (see etrade_client.ETradeClient.get_positions()).
+# DEFAULT_TICKERS is only the fallback used if the account has no open
+# positions (e.g. a fresh sandbox account) or the portfolio fetch fails.
+DEFAULT_TICKERS = ["AAPL", "MSFT"]
 
 # Strategy parameters (simple moving average crossover)
 SHORT_WINDOW = 20   # days

@@ -30,7 +30,7 @@ def main():
     # If you don't yet have your ACCOUNT_ID_KEY, uncomment the next two lines,
     # run once, copy the accountIdKey from the printed output into your .env,
     # then comment them back out.
-    #print(client.list_accounts())
+    # print(client.list_accounts())
     #return
 
     if not config.ACCOUNT_ID_KEY and not config.DRY_RUN:
